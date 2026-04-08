@@ -1,0 +1,49 @@
+project-root/
+  app/                             # Next.js App Router (keep existing routes)
+    (auth)/
+      login/
+        page.tsx
+        actions.ts
+    (dashboard)/
+      layout.tsx
+      page.tsx
+      patients/page.tsx
+      consultations/page.tsx
+      calendar/page.tsx
+      revenue/page.tsx
+      contact/page.tsx
+    layout.tsx
+    globals.css
+    components/
+    lib/
+    constants.ts
+    types.ts
+  electron/
+    services/
+      main.ts                      # Electron main process entry
+      preload.ts                   # secure bridge to renderer
+    db/
+      index.ts                     # DB bootstrap/connection
+      schema.sql                   # or drizzle/prisma schema
+      migrations/
+    repositories/
+      patient.repository.ts
+      consultation.repository.ts
+      appointment.repository.ts
+      revenue.repository.ts
+      auth.repository.ts
+    handlers/
+      auth.handlers.ts             # ipcMain handlers
+      patient.handlers.ts
+      consultation.handlers.ts
+      appointment.handlers.ts
+      revenue.handlers.ts
+  src/                             # shared non-route code (optional but useful)
+    shared/
+      ipc-contracts.ts             # channel names, DTOs, result types
+      validation.ts
+      types.ts
+  middleware.ts                    # keep for Next route protection logic
+  package.json
+  tsconfig.json
+  next.config.ts
