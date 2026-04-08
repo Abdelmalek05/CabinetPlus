@@ -1,0 +1,167 @@
+# CabinetPlus Electron Migration Tasks
+
+## 0) Decisions and baseline
+- [ ] Confirm runtime approach: run Next.js as an embedded local server in Electron (recommended for App Router + server actions).
+- [ ] Freeze current web behavior as baseline (login flow, dashboard navigation, pages load without errors).
+- [ ] Define desktop targets: Windows first, then macOS/Linux.
+- [ ] Add migration branch strategy and milestone tags (M1 shell, M2 data, M3 packaging).
+
+## 1) Project structure changes
+- [ ] Create `electron/` folder with:
+  - [ ] `electron/main.ts` (app lifecycle + BrowserWindow)
+  - [ ] `electron/preload.ts` (safe bridge for IPC)
+  - [ ] `electron/ipc/` (handlers grouped by domain)
+  - [ ] `electron/security.ts` (window/webPreferences hardening)
+  - [ ] `electron/paths.ts` (userData/db/log paths)
+- [ ] Keep Next app in `app/` as renderer UI (no rewrite to pure React renderer).
+- [ ] Add `shared/` for cross-process types (DTOs, request/response contracts, event names).
+
+## 2) Tooling and scripts
+- [ ] Add Electron runtime/build deps (`electron`, `electron-builder` or `electron-forge`, `concurrently`, `wait-on`, `cross-env`).
+- [ ] Add TypeScript config for Electron process (`tsconfig.electron.json`).
+- [ ] Add scripts to `package.json`:
+  - [ ] `dev:next` -> `next dev`
+  - [ ] `dev:electron` -> run Electron after Next port is ready
+  - [ ] `dev:desktop` -> run both processes together
+  - [ ] `build:web` -> `next build`
+  - [ ] `build:electron` -> compile/package Electron
+  - [ ] `build:desktop` -> full distributable build
+- [ ] Ensure lint covers Electron and shared folders.
+
+## 3) Electron main process foundation
+- [ ] Create BrowserWindow with strict defaults:
+  - [ ] `contextIsolation: true`
+  - [ ] `nodeIntegration: false`
+  - [ ] `sandbox: true` (if compatible)
+  - [ ] preload script enabled
+- [ ] Dev mode: load `http://localhost:<port>` from Next dev server.
+- [ ] Prod mode: start Next server programmatically and load local URL.
+- [ ] Add single-instance lock and clean app shutdown handling.
+- [ ] Add centralized error logging for main process startup and IPC failures.
+
+## 4) Preload and IPC contract
+- [ ] Define namespaced API exposed to renderer, example:
+  - [ ] `window.cabinet.auth.*`
+  - [ ] `window.cabinet.patients.*`
+  - [ ] `window.cabinet.consultations.*`
+  - [ ] `window.cabinet.revenue.*`
+- [ ] Build typed IPC request/response contracts in `shared/`.
+- [ ] Implement input validation for every IPC handler (zod recommended).
+- [ ] Add uniform error shape for renderer consumption (`code`, `message`, `details`).
+- [ ] Add IPC timeout and cancellation strategy for long operations.
+
+## 5) Database setup (replace mock constants)
+- [ ] Choose DB: SQLite recommended for desktop offline-first.
+- [ ] Choose ORM/query layer (`Prisma` or `Drizzle`), then standardize on one.
+- [ ] Create schema for core entities:
+  - [ ] `users`
+  - [ ] `patients`
+  - [ ] `appointments`
+  - [ ] `consultations`
+  - [ ] `consultation_treatments`
+  - [ ] `revenues` (or derive from billing records)
+- [ ] Add migration system and initial migration.
+- [ ] Store DB file in Electron `app.getPath("userData")`, not project root.
+- [ ] Add seed script to populate development data equivalent to `app/constants.ts`.
+- [ ] Add backup/restore strategy (manual export first, automation later).
+
+## 6) Repository layer
+- [ ] Add repositories per aggregate (pure data access, no UI logic):
+  - [ ] `PatientRepository`
+  - [ ] `AppointmentRepository`
+  - [ ] `ConsultationRepository`
+  - [ ] `RevenueRepository`
+  - [ ] `UserRepository`
+- [ ] Standardize repository return types (success/result patterns).
+- [ ] Add pagination/filter/sort contracts for list queries.
+- [ ] Add transaction support for multi-write flows.
+- [ ] Add repository unit tests against a temp SQLite DB.
+
+## 7) Handler/service layer
+- [ ] Build service layer between IPC and repositories:
+  - [ ] `AuthService`
+  - [ ] `PatientService`
+  - [ ] `ConsultationService`
+  - [ ] `SchedulingService`
+  - [ ] `RevenueService`
+- [ ] Implement business rules currently implicit in UI (validation, defaults, statuses).
+- [ ] Move login behavior from cookie-only mock to persisted user/session model.
+- [ ] Keep server actions only where needed; prefer IPC for desktop-only operations.
+- [ ] Add audit events for create/update/delete actions.
+
+## 8) Frontend integration tasks
+- [ ] Replace direct `MOCK_*` usage with data hooks/services that call `window.cabinet` API.
+- [ ] Add query/state library (TanStack Query recommended) for caching and invalidation.
+- [ ] Create feature data modules by route group:
+  - [ ] `app/(dashboard)/patients` data bindings
+  - [ ] `app/(dashboard)/consultations` data bindings
+  - [ ] `app/(dashboard)/calendar` data bindings
+  - [ ] `app/(dashboard)/revenue` data bindings
+- [ ] Add optimistic updates only where rollback is defined.
+- [ ] Add loading, empty, and error states on all data screens.
+- [ ] Keep using `app/components/ui/primitives.tsx` for consistent controls.
+
+## 9) Auth/session redesign for desktop
+- [ ] Replace middleware cookie gate with desktop session state source.
+- [ ] Keep route guard behavior equivalent to current `middleware.ts` paths.
+- [ ] Add secure credential storage plan:
+  - [ ] local hashed credentials for offline mode, or
+  - [ ] token storage via OS keychain (`keytar`) if remote auth is added.
+- [ ] Add logout that clears in-memory and persisted session artifacts.
+
+## 10) Security hardening
+- [ ] Disable remote module and unneeded web APIs.
+- [ ] Define strict Content Security Policy for renderer.
+- [ ] Validate and sanitize all IPC payloads.
+- [ ] Prevent arbitrary file path access in handlers.
+- [ ] Add dependency audit check in CI/pre-release.
+
+## 11) Build and packaging
+- [ ] Configure app metadata (name, icon, appId, productName).
+- [ ] Configure platform targets:
+  - [ ] Windows installer (NSIS)
+  - [ ] macOS dmg/pkg (later milestone)
+  - [ ] Linux AppImage/deb (later milestone)
+- [ ] Ensure Next production assets are bundled and reachable in packaged app.
+- [ ] Add code-signing placeholders and env var docs.
+- [ ] Produce internal release checklist for QA signoff.
+
+## 12) Testing and verification
+- [ ] Add minimum automated checks:
+  - [ ] typecheck (`npx tsc --noEmit`)
+  - [ ] lint (`npm run lint`)
+  - [ ] repository/service tests
+  - [ ] smoke E2E: app boots, login works, CRUD works
+- [ ] Add focused manual QA script per module (patients, consultations, calendar, revenue).
+- [ ] Add migration test: fresh install and upgrade from previous DB schema.
+
+## 13) Incremental delivery plan
+- [ ] M1: Electron shell + existing UI loaded (no DB rewrite yet).
+- [ ] M2: SQLite + repositories + IPC read operations.
+- [ ] M3: write operations + form validation + error handling.
+- [ ] M4: auth/session redesign + route guards.
+- [ ] M5: packaging + installer + release checklist.
+
+## 14) File-level implementation checklist (suggested)
+- [ ] Add: `electron/main.ts`
+- [ ] Add: `electron/preload.ts`
+- [ ] Add: `electron/ipc/auth.handlers.ts`
+- [ ] Add: `electron/ipc/patient.handlers.ts`
+- [ ] Add: `electron/ipc/consultation.handlers.ts`
+- [ ] Add: `electron/ipc/revenue.handlers.ts`
+- [ ] Add: `shared/ipc.ts`
+- [ ] Add: `shared/dto.ts`
+- [ ] Add: `db/schema.ts` (or `prisma/schema.prisma`)
+- [ ] Add: `db/migrations/*`
+- [ ] Add: `db/seed.ts`
+- [ ] Add: `app/lib/api/client.ts` (renderer bridge wrapper)
+- [ ] Update: `app/(auth)/login/actions.ts` (or replace with IPC login flow)
+- [ ] Update: `middleware.ts` (if still needed in desktop runtime)
+- [ ] Update: `package.json` scripts for desktop workflows
+
+## 15) Definition of done
+- [ ] App launches as desktop executable and loads dashboard.
+- [ ] No page depends on `MOCK_PATIENTS` or `MOCK_APPOINTMENTS` in production mode.
+- [ ] Core CRUD (patients/consultations/appointments) persists in SQLite.
+- [ ] Auth/session survives app restart and supports logout.
+- [ ] Lint/typecheck pass and packaging produces installable artifact.

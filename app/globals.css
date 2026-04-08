@@ -53,6 +53,10 @@
   box-shadow: 0 12px 40px rgba(0, 32, 69, 0.04);
 }
 
+.pulse-gradient {
+  background: linear-gradient(135deg, #002045 0%, #1a365d 100%);
+}
+
 .scrollbar-hide::-webkit-scrollbar {
   display: none;
 }
