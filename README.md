@@ -20,6 +20,24 @@ You can start editing the page by modifying `app/page.tsx`. The page auto-update
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
 
+## Database Schema Setup
+
+The project includes a cleaned SQLite schema generated from the legacy dump (structure only, no seed `INSERT` data, no post `ALTER` migration blocks).
+
+1. Install dependencies:
+
+```bash
+npm install
+```
+
+2. Create/update the local SQLite database:
+
+```bash
+npm run db:setup
+```
+
+This creates `electron/db/cabinetplus.db` using `electron/db/schema.sql`.
+
 ## Learn More
 
 To learn more about Next.js, take a look at the following resources:

@@ -121,7 +121,7 @@ export function Modal({
   };
 
   return (
-    <div className="fixed inset-0 z-[90] flex items-center justify-center bg-slate-950/40 p-4" role="dialog" aria-modal="true">
+    <div className="fixed inset-0 z-90 flex items-center justify-center bg-slate-950/40 p-4" role="dialog" aria-modal="true">
       <div className={cn("w-full rounded-2xl border border-slate-200 bg-white p-6 card-shadow", sizeClass[size])}>
         <div className="mb-4 flex items-center justify-between">
           <h2 className="text-lg font-bold text-primary">{title}</h2>

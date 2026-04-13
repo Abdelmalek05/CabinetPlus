@@ -1,11 +1,11 @@
-import { app, BrowserWindow, ipcMain, shell } from "electron";
+import { app, BrowserWindow, shell } from "electron";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { registerIpcHandlers } from "../handlers/ipc.ts";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const isDev = process.env.NODE_ENV === "development";
 const startUrl = process.env.ELECTRON_START_URL || "http://localhost:3000";
 
 function createMainWindow() {
@@ -40,9 +40,7 @@ function createMainWindow() {
   // }
 }
 
-ipcMain.handle("app:ping", async () => {
-  return { ok: true, message: "pong" };
-});
+registerIpcHandlers();
 
 app.whenReady().then(() => {
   createMainWindow();

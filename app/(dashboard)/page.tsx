@@ -12,13 +12,20 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import type { ComponentType } from "react";
+import { unstable_noStore as noStore } from "next/cache";
 import { MOCK_PATIENTS } from "@/app/constants";
+import { getRecentPatients } from "@/electron/repositories/patient-repository";
 import { cn } from "@/app/lib/utils";
 
 type CardColor = "orange" | "fuchsia" | "sky" | "amber" | "teal";
 type WideCardColor = "teal" | "emerald" | "rose" | "slate";
 
-export default function DashboardPage() {
+export default async function DashboardPage() {
+  noStore();
+
+  const recentPatients = getRecentPatients(10);
+  const displayedPatients = recentPatients.length > 0 ? recentPatients : MOCK_PATIENTS;
+
   return (
     <div className="space-y-10">
       <header>
@@ -70,7 +77,7 @@ export default function DashboardPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {MOCK_PATIENTS.map((patient) => (
+                  {displayedPatients.map((patient) => (
                     <tr key={patient.id} className="transition-colors hover:bg-slate-50">
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-3">
