@@ -1,8 +1,6 @@
-import "server-only";
-
-import { countAppointmentsByDate } from "./appointment-repository";
-import { getRevenueTotal } from "./billing-repository";
-import { countPatients } from "./patient-repository";
+import { countAppointmentsByDate } from "./appointment-repository.ts"
+import { getRevenueTotal } from "./billing-repository.ts"
+import { countPatients } from "./patient-repository.ts"
 
 export function getDashboardSummary(referenceDate = new Date().toISOString().slice(0, 10)) {
   return {

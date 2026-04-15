@@ -23,7 +23,12 @@ type WideCardColor = "teal" | "emerald" | "rose" | "slate";
 export default async function DashboardPage() {
   noStore();
 
-  const recentPatients = getRecentPatients(10);
+  let recentPatients: { id: string; name: string; age: number; address: string; lastConsultation: string }[] = [];
+  try {
+    recentPatients = getRecentPatients(10);
+  } catch {
+    // better-sqlite3 may be compiled for a different Node ABI (e.g. Electron vs system Node)
+  }
   const displayedPatients = recentPatients.length > 0 ? recentPatients : MOCK_PATIENTS;
 
   return (

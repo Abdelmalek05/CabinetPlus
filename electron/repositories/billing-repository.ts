@@ -1,7 +1,5 @@
-import "server-only";
-
-import { getDatabase } from "./db";
-import type { RevenueRow } from "./types";
+import { getDatabase } from "./db.ts"
+import type { RevenueRow } from "./types.ts"
 
 type BillingRow = {
   consultationId: number;

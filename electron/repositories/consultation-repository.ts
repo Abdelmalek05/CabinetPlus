@@ -1,7 +1,5 @@
-import "server-only";
-
-import { getDatabase } from "./db";
-import type { ConsultationCreateInput, PrescriptionCreateInput } from "./types";
+import { getDatabase } from "./db.ts"
+import type { ConsultationCreateInput, PrescriptionCreateInput } from "./types.ts"
 
 type ConsultationRow = {
   ID: number;
