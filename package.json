@@ -3,10 +3,11 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
-    "dev:web": "next dev",
+    "dev": "cross-env NODE_OPTIONS=--max-old-space-size=4096 next dev --webpack",
+    "dev:web": "cross-env NODE_OPTIONS=--max-old-space-size=4096 next dev --webpack",
     "dev:electron:app": "wait-on tcp:3000 && cross-env NODE_ENV=development ELECTRON_START_URL=http://localhost:3000 electron electron/services/main.mjs",
     "dev:electron": "npm run rebuild:native && concurrently -k -n WEB,ELECTRON -c green,cyan \"npm run dev:web\" \"npm run dev:electron:app\"",
+    "test:chat": "node scripts/chat-accuracy-check.mjs",
     "db:setup": "node electron/db/init-db.mjs",
     "rebuild:native": "electron-rebuild -f -w better-sqlite3",
     "postinstall": "npm run rebuild:native || node -e \"console.warn('Skipping native rebuild: install Visual Studio Build Tools (Desktop development with C++) to compile better-sqlite3 for Electron.')\"",
@@ -21,6 +22,8 @@
     "next": "16.2.2",
     "react": "19.2.4",
     "react-dom": "19.2.4",
+    "react-markdown": "^10.1.0",
+    "remark-gfm": "^4.0.1",
     "tailwind-merge": "^3.3.1"
   },
   "devDependencies": {
