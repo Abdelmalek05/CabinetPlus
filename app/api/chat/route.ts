@@ -1,6 +1,15 @@
+import { buildPatientClinicalContext } from "@/app/lib/server/patient-context";
+
+export const runtime = "nodejs";
+
 type ChatMessage = {
   role: "user" | "assistant";
   content: string;
+};
+
+type ChatRequestBody = {
+  messages?: ChatMessage[];
+  contextPatientId?: string | number;
 };
 
 type GeminiPart = {
@@ -72,6 +81,21 @@ Preferred answer format:
 - Then provide short actionable bullets when useful.
 - For complex clinical prompts, include: likely hypotheses, recommended checks/tests, and practical next action.`;
 
+function buildSystemPrompt(patientClinicalContext: string | null) {
+  if (!patientClinicalContext) {
+    return SYSTEM_PROMPT;
+  }
+
+  return `${SYSTEM_PROMPT}
+
+Important request context:
+- The doctor attached a patient context for this single request.
+- The context below is anonymized and clinically curated; use it when relevant.
+- Do not ask for identifiers and do not expose personal information.
+
+${patientClinicalContext}`;
+}
+
 function isQuotaError(status: number, payload: GeminiErrorPayload | null, rawBody = "") {
   const message = payload?.error?.message?.toLowerCase() ?? "";
   const errorStatus = payload?.error?.status?.toUpperCase() ?? "";
@@ -132,7 +156,7 @@ function getAssistantText(payload: GeminiSuccessPayload | null) {
   return text && text.length > 0 ? text : null;
 }
 
-async function requestModel(model: string, apiKey: string, contents: GeminiContent[]): Promise<ModelAttempt> {
+async function requestModel(model: string, apiKey: string, contents: GeminiContent[], systemPrompt: string): Promise<ModelAttempt> {
   const response = await fetch(`${GEMINI_API_BASE}/${model}:generateContent?key=${encodeURIComponent(apiKey)}`, {
     method: "POST",
     headers: {
@@ -140,7 +164,7 @@ async function requestModel(model: string, apiKey: string, contents: GeminiConte
     },
     body: JSON.stringify({
       systemInstruction: {
-        parts: [{ text: SYSTEM_PROMPT }],
+        parts: [{ text: systemPrompt }],
       },
       contents,
       generationConfig: {
@@ -177,8 +201,8 @@ async function requestModel(model: string, apiKey: string, contents: GeminiConte
   };
 }
 
-async function generateWithFallback(contents: GeminiContent[], apiKey: string) {
-  const primaryAttempt = await requestModel(PRIMARY_MODEL, apiKey, contents);
+async function generateWithFallback(contents: GeminiContent[], apiKey: string, systemPrompt: string) {
+  const primaryAttempt = await requestModel(PRIMARY_MODEL, apiKey, contents, systemPrompt);
 
   if (primaryAttempt.ok) {
     return primaryAttempt;
@@ -188,7 +212,7 @@ async function generateWithFallback(contents: GeminiContent[], apiKey: string) {
     return primaryAttempt;
   }
 
-  const fallbackAttempt = await requestModel(FALLBACK_MODEL, apiKey, contents);
+  const fallbackAttempt = await requestModel(FALLBACK_MODEL, apiKey, contents, systemPrompt);
 
   if (fallbackAttempt.ok) {
     return fallbackAttempt;
@@ -219,7 +243,7 @@ export async function POST(request: Request) {
     return Response.json({ error: "missing_api_key" }, { status: 500 });
   }
 
-  let body: { messages?: ChatMessage[] };
+  let body: ChatRequestBody;
 
   try {
     body = await request.json();
@@ -237,8 +261,14 @@ export async function POST(request: Request) {
     return Response.json({ error: "invalid_request" }, { status: 400 });
   }
 
+  const patientClinicalContext = body.contextPatientId
+    ? buildPatientClinicalContext(body.contextPatientId)
+    : null;
+
+  const systemPrompt = buildSystemPrompt(patientClinicalContext);
+
   try {
-    const result = await generateWithFallback(contents, apiKey);
+    const result = await generateWithFallback(contents, apiKey, systemPrompt);
 
     if (result.ok) {
       return Response.json({

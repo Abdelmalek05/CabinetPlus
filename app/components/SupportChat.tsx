@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { MessageCircle, Send, X } from "lucide-react";
+import { LoaderCircle, MessageCircle, Plus, Send, UserRound, X } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
@@ -12,6 +12,11 @@ type Message = {
 
 type SupportChatProps = {
   embedded?: boolean;
+};
+
+type PatientContextCandidate = {
+  id: string;
+  label: string;
 };
 
 const WELCOME_MESSAGE: Message = {
@@ -34,6 +39,12 @@ export default function SupportChat({ embedded = false }: SupportChatProps) {
   const [messages, setMessages] = useState<Message[]>([WELCOME_MESSAGE]);
   const [input, setInput] = useState("");
   const [isTyping, setIsTyping] = useState(false);
+  const [isPickerOpen, setIsPickerOpen] = useState(false);
+  const [isLoadingPatients, setIsLoadingPatients] = useState(false);
+  const [patientsLoadError, setPatientsLoadError] = useState<string | null>(null);
+  const [patientCandidates, setPatientCandidates] = useState<PatientContextCandidate[]>([]);
+  const [pickerPatientId, setPickerPatientId] = useState("");
+  const [activePatientContext, setActivePatientContext] = useState<PatientContextCandidate | null>(null);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -84,6 +95,60 @@ export default function SupportChat({ embedded = false }: SupportChatProps) {
     };
   }, [embedded, isOpen]);
 
+  const loadPatientCandidates = useCallback(async () => {
+    if (patientCandidates.length > 0 || isLoadingPatients) return;
+
+    setIsLoadingPatients(true);
+    setPatientsLoadError(null);
+
+    try {
+      const response = await fetch("/api/patients/context");
+      const data = await response.json().catch(() => null);
+
+      if (!response.ok || !Array.isArray(data?.patients)) {
+        throw new Error("Unable to load patients list");
+      }
+
+      const candidates = data.patients
+        .filter((patient: unknown): patient is PatientContextCandidate => {
+          if (!patient || typeof patient !== "object") return false;
+          const entry = patient as Record<string, unknown>;
+          return typeof entry.id === "string" && typeof entry.label === "string";
+        })
+        .slice(0, 200);
+
+      setPatientCandidates(candidates);
+
+      if (!pickerPatientId && candidates.length > 0) {
+        setPickerPatientId(candidates[0].id);
+      }
+    } catch (error) {
+      console.error("Failed to load patient context candidates:", error);
+      setPatientsLoadError("Impossible de charger la liste des patients.");
+    } finally {
+      setIsLoadingPatients(false);
+    }
+  }, [isLoadingPatients, patientCandidates, pickerPatientId]);
+
+  const openPatientPicker = async () => {
+    setIsPickerOpen(true);
+    await loadPatientCandidates();
+  };
+
+  const attachPatientContext = () => {
+    if (!pickerPatientId) return;
+    const selectedPatient = patientCandidates.find((candidate) => candidate.id === pickerPatientId);
+    if (!selectedPatient) return;
+
+    setActivePatientContext(selectedPatient);
+    setIsPickerOpen(false);
+    inputRef.current?.focus();
+  };
+
+  const clearPatientContext = () => {
+    setActivePatientContext(null);
+  };
+
   const handleSend = async (overrideInput?: string) => {
     const trimmedInput = (overrideInput ?? input).trim();
     if (!trimmedInput || isTyping) return;
@@ -109,6 +174,7 @@ export default function SupportChat({ embedded = false }: SupportChatProps) {
         },
         body: JSON.stringify({
           messages: sanitizedMessages,
+          contextPatientId: activePatientContext?.id,
         }),
       });
 
@@ -239,6 +305,80 @@ export default function SupportChat({ embedded = false }: SupportChatProps) {
           </div>
 
           <div className="border-t border-slate-200 bg-white p-4">
+            <div className="mb-3 flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  void openPatientPicker();
+                }}
+                className="inline-flex items-center gap-1.5 rounded-full border border-slate-300 bg-slate-50 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide text-slate-700 transition hover:border-emerald-400 hover:bg-emerald-50 hover:text-emerald-700"
+              >
+                <Plus className="h-3.5 w-3.5" />
+                Ajouter contexte patient
+              </button>
+
+              {activePatientContext ? (
+                <div className="inline-flex max-w-full items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-[11px] text-emerald-800">
+                  <UserRound className="h-3.5 w-3.5 shrink-0" />
+                  <span className="truncate font-semibold">{activePatientContext.label}</span>
+                  <button
+                    type="button"
+                    onClick={clearPatientContext}
+                    className="rounded-full p-0.5 text-emerald-700 transition hover:bg-emerald-100"
+                    aria-label="Retirer le contexte patient"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              ) : null}
+            </div>
+
+            {isPickerOpen ? (
+              <div className="mb-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
+                <p className="mb-2 text-xs font-semibold text-slate-600">Selectionner un patient pour enrichir le contexte clinique de cette conversation.</p>
+                {isLoadingPatients ? (
+                  <div className="flex items-center gap-2 text-xs text-slate-500">
+                    <LoaderCircle className="h-4 w-4 animate-spin" /> Chargement des patients...
+                  </div>
+                ) : (
+                  <>
+                    <select
+                      value={pickerPatientId}
+                      onChange={(event) => setPickerPatientId(event.target.value)}
+                      className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 outline-none transition focus:border-emerald-400"
+                    >
+                      <option value="">Choisir un patient...</option>
+                      {patientCandidates.map((candidate) => (
+                        <option key={candidate.id} value={candidate.id}>
+                          {candidate.label}
+                        </option>
+                      ))}
+                    </select>
+
+                    {patientsLoadError ? <p className="mt-2 text-xs text-rose-600">{patientsLoadError}</p> : null}
+
+                    <div className="mt-3 flex items-center justify-end gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setIsPickerOpen(false)}
+                        className="rounded-lg px-3 py-1.5 text-xs font-semibold text-slate-600 transition hover:bg-slate-200"
+                      >
+                        Annuler
+                      </button>
+                      <button
+                        type="button"
+                        onClick={attachPatientContext}
+                        disabled={!pickerPatientId}
+                        className="rounded-lg bg-emerald-500 px-3 py-1.5 text-xs font-bold text-slate-950 transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        Ajouter
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+            ) : null}
+
             <div className="flex items-center gap-2">
               <input
                 ref={inputRef}
