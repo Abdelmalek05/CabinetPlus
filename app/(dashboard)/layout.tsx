@@ -1,11 +1,15 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
+import { usePathname } from "next/navigation";
 import Sidebar from "@/app/components/Sidebar";
 import TopBar from "@/app/components/TopBar";
+import SupportChat from "@/app/components/SupportChat";
 
 export default function DashboardLayout({ children }: { children: ReactNode }) {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const pathname = usePathname();
+  const showFloatingSupportChat = !pathname.startsWith("/ai");
 
   return (
     <div className="flex min-h-screen bg-surface">
@@ -13,6 +17,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
       <main className="relative flex min-h-screen flex-1 flex-col pt-16 lg:ml-64">
         <TopBar onToggleSidebar={() => setIsSidebarOpen((prev) => !prev)} />
         <div className="flex-1 p-4 md:p-6 xl:p-8">{children}</div>
+        {showFloatingSupportChat ? <SupportChat /> : null}
       </main>
     </div>
   );
