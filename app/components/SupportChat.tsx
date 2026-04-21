@@ -42,8 +42,9 @@ type BilanRecord = {
   AVANT?: string;
   BILAN?: string;
   SALUT?: string;
-  ID_CONSULT?: number;
-  consultationId?: string | number;
+  avant?: string;
+  bilan?: string;
+  salut?: string;
 };
 
 type CabinetBridge = {
@@ -62,6 +63,21 @@ type CabinetBridge = {
       list: (options?: { patientId?: string | number; limit?: number; offset?: number }) => Promise<BilanRecord[]>;
     };
   };
+};
+
+const WELCOME_MESSAGE: Message = {
+  role: "assistant",
+  content: "Hello. I am your CabinetPlus assistant. Ask me anything and I will do my best to help.",
+};
+
+const QUOTA_EXCEEDED_MESSAGE: Message = {
+  role: "assistant",
+  content: "I'm currently taking a short break! ☕ My daily response limit has been reached. Please try again shortly.",
+};
+
+const FALLBACK_ERROR_MESSAGE: Message = {
+  role: "assistant",
+  content: "Sorry, I could not respond right now. Please try again in a moment.",
 };
 
 function normalizeSnippet(value: string | null | undefined, maxLength = 220) {
@@ -84,21 +100,6 @@ function getCabinetBridge(): CabinetBridge | null {
   const withBridge = window as Window & { cabinet?: CabinetBridge };
   return withBridge.cabinet ?? null;
 }
-
-const WELCOME_MESSAGE: Message = {
-  role: "assistant",
-  content: "Hello. I am your CabinetPlus assistant. Ask me anything and I will do my best to help.",
-};
-
-const QUOTA_EXCEEDED_MESSAGE: Message = {
-  role: "assistant",
-  content: "I'm currently taking a short break! ☕ My daily response limit has been reached. Please try again shortly.",
-};
-
-const FALLBACK_ERROR_MESSAGE: Message = {
-  role: "assistant",
-  content: "Sorry, I could not respond right now. Please try again in a moment.",
-};
 
 export default function SupportChat({ embedded = false }: SupportChatProps) {
   const [isOpen, setIsOpen] = useState(embedded);
@@ -190,7 +191,7 @@ export default function SupportChat({ embedded = false }: SupportChatProps) {
     const consultations = bridge.consultations?.byPatient ? await bridge.consultations.byPatient(patientId) : [];
     const recentConsultations = Array.isArray(consultations) ? consultations.slice(0, 3) : [];
 
-    const prescriptionLists = bridge.prescriptions?.byConsultation
+    const prescriptionsByConsultation = bridge.prescriptions?.byConsultation
       ? await Promise.all(
           recentConsultations
             .map((consultation) => consultation.ID)
@@ -231,7 +232,7 @@ export default function SupportChat({ embedded = false }: SupportChatProps) {
       lines.push("### Consultations recentes");
       recentConsultations.forEach((consultation, index) => {
         const label = normalizeSnippet(consultation.DATE, 40) || `Consultation ${index + 1}`;
-        const parts = [
+        const details = [
           normalizeSnippet(consultation.DIAGNOSTIC, 220) ? `diagnostic: ${normalizeSnippet(consultation.DIAGNOSTIC, 220)}` : "",
           normalizeSnippet(consultation.MALADIE, 160) ? `pathologie evoquee: ${normalizeSnippet(consultation.MALADIE, 160)}` : "",
           normalizeSnippet(consultation.CONSTAT, 160) ? `constat clinique: ${normalizeSnippet(consultation.CONSTAT, 160)}` : "",
@@ -239,33 +240,33 @@ export default function SupportChat({ embedded = false }: SupportChatProps) {
           normalizeSnippet(consultation.TRAITEMENT, 150) ? `traitement: ${normalizeSnippet(consultation.TRAITEMENT, 150)}` : "",
           normalizeSnippet(consultation.NOTE, 140) ? `note: ${normalizeSnippet(consultation.NOTE, 140)}` : "",
         ].filter(Boolean);
+
         lines.push(`- ${label}`);
-        if (parts.length > 0) {
-          lines.push(`  - ${parts.join(" | ")}`);
+        if (details.length > 0) {
+          lines.push(`  - ${details.join(" | ")}`);
         }
       });
     }
 
-    const flatPrescriptions = prescriptionLists.flat().slice(0, 6);
+    const flatPrescriptions = prescriptionsByConsultation.flat().slice(0, 6);
     if (flatPrescriptions.length > 0) {
       lines.push("### Prescriptions recentes");
       flatPrescriptions.forEach((prescription) => {
-        const med = normalizeSnippet(prescription.MEDICAMENT, 80);
-        if (!med) return;
-        const type = normalizeSnippet(prescription.TYPE, 60);
-        const prise = normalizeSnippet(prescription.PRISE, 100);
-        const duree = normalizeSnippet(prescription.DUREE, 60);
-        const detail = [type, prise, duree].filter(Boolean).join(" | ");
-        lines.push(`- ${med}${detail ? ` - ${detail}` : ""}`);
+        const medication = normalizeSnippet(prescription.MEDICAMENT, 80);
+        if (!medication) return;
+        const detail = [normalizeSnippet(prescription.TYPE, 60), normalizeSnippet(prescription.PRISE, 100), normalizeSnippet(prescription.DUREE, 60)]
+          .filter(Boolean)
+          .join(" | ");
+        lines.push(`- ${medication}${detail ? ` - ${detail}` : ""}`);
       });
     }
 
     if (Array.isArray(bilans) && bilans.length > 0) {
       lines.push("### Bilans associes");
       bilans.slice(0, 3).forEach((bilan) => {
-        const before = normalizeSnippet(bilan.AVANT, 120);
-        const result = normalizeSnippet(bilan.BILAN, 160);
-        const followUp = normalizeSnippet(bilan.SALUT, 120);
+        const before = normalizeSnippet(bilan.AVANT ?? bilan.avant, 120);
+        const result = normalizeSnippet(bilan.BILAN ?? bilan.bilan, 160);
+        const followUp = normalizeSnippet(bilan.SALUT ?? bilan.salut, 120);
         const parts = [before ? `avant: ${before}` : "", result ? `bilan: ${result}` : "", followUp ? `suite: ${followUp}` : ""].filter(Boolean);
         if (parts.length > 0) {
           lines.push(`- ${parts.join(" | ")}`);
@@ -292,7 +293,6 @@ export default function SupportChat({ embedded = false }: SupportChatProps) {
       }
 
       const candidates = bridgeCandidates.slice(0, 200);
-
       setPatientCandidates(candidates);
 
       if (!pickerPatientId && candidates.length > 0) {
@@ -323,9 +323,11 @@ export default function SupportChat({ embedded = false }: SupportChatProps) {
       const contextText = await buildPatientContextFromBridge(selectedPatient.id);
       setActivePatientContext(selectedPatient);
       setActivePatientContextText(contextText);
+
       if (!contextText) {
-        setPatientContextError("Contexte detaille indisponible: utilisation des donnees minimales de selection.");
+        setPatientContextError("Contexte detaille indisponible: utilisation du profil patient uniquement.");
       }
+
       setIsPickerOpen(false);
       inputRef.current?.focus();
     } catch (error) {

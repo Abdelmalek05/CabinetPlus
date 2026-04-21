@@ -10,7 +10,6 @@ import {
   FileText,
   Trash2,
   Sparkles,
-  MessageCircle,
   FileSearch,
   History,
   AlertCircle,
@@ -26,7 +25,6 @@ import {
   SelectInput,
   TextArea,
   TextInput,
-  StatusPill,
 } from "@/app/components/ui/primitives";
 import { cn } from "@/app/lib/utils";
 
@@ -153,7 +151,6 @@ export default function ConsultationPage() {
   const [showAddMedForm, setShowAddMedForm] = useState(false);
 
   // -- UI state --
-  const [chatbotOpen, setChatbotOpen] = useState(false);
   const [statusMessage, setStatusMessage] = useState("");
   const [saving, setSaving] = useState(false);
 
@@ -867,13 +864,6 @@ export default function ConsultationPage() {
                   </div>
                 </div>
 
-                <button
-                  className="flex w-full items-center justify-center gap-2 rounded-xl border-2 border-dashed border-slate-200 py-4 text-xs font-bold text-slate-400 transition-all hover:border-emerald-500 hover:text-emerald-600"
-                  onClick={() => setChatbotOpen(true)}
-                >
-                  <MessageCircle className="h-4 w-4" />
-                  Poser une question à l&apos;IA
-                </button>
               </div>
             </AppCard>
 
@@ -905,59 +895,6 @@ export default function ConsultationPage() {
           </section>
         </div>
       )}
-
-      {/* Floating AI Assistant Button */}
-      <div className="fixed bottom-8 right-8 z-100">
-        <button
-          onClick={() => setChatbotOpen(!chatbotOpen)}
-          className={cn(
-            "group relative flex h-16 w-16 items-center justify-center rounded-full shadow-2xl transition-all active:scale-95",
-            chatbotOpen ? "rotate-90 bg-rose-500" : "bg-primary hover:scale-110",
-          )}
-        >
-          {chatbotOpen ? (
-            <Plus className="h-8 w-8 rotate-45 text-white" />
-          ) : (
-            <>
-              <Sparkles className="h-8 w-8 text-white transition-transform group-hover:rotate-12" />
-              <span className="absolute -right-1 -top-1 flex h-6 w-6 animate-bounce items-center justify-center rounded-full border-4 border-white bg-emerald-500 text-[10px] font-bold text-white shadow-lg">
-                2
-              </span>
-            </>
-          )}
-        </button>
-
-        {/* Quick Chat Overlay */}
-        {chatbotOpen && (
-          <div className="animate-in slide-in-from-bottom-4 absolute bottom-20 right-0 w-96 overflow-hidden rounded-4xl border border-slate-100 bg-white shadow-2xl duration-300">
-            <div className="pulse-gradient flex items-center justify-between p-6 text-white">
-              <div className="flex items-center gap-2">
-                <Sparkles className="h-5 w-5" />
-                <h4 className="font-bold">Assistant Aura</h4>
-              </div>
-              <StatusPill text="En ligne" tone="success" />
-            </div>
-            <div className="scrollbar-hide h-80 space-y-4 overflow-y-auto p-6">
-              <div className="mr-12 rounded-2xl rounded-tl-none bg-slate-100 p-4 text-sm">
-                Bonjour Dr. Ferkoune, je suis là pour vous aider avec{" "}
-                {selectedPatient?.name ?? "votre patient"}. Souhaitez-vous analyser les résultats du
-                dernier bilan bio ?
-              </div>
-              <div className="ml-12 rounded-2xl rounded-tr-none bg-primary p-4 text-sm text-white">
-                Oui, vérifie s&apos;il y a une augmentation de la créatinine.
-              </div>
-            </div>
-            <div className="border-t border-slate-100 bg-slate-50 p-4">
-              <div className="relative">
-                <TextInput placeholder="Posez votre question..." className="bg-white pr-12" />
-                <button className="absolute right-3 top-1/2 -translate-y-1/2 rounded-lg p-2 text-primary hover:bg-slate-100">
-                  <Plus className="h-5 w-5 rotate-45" />
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
 
       {/* Status toast */}
       {statusMessage && (
