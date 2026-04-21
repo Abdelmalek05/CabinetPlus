@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { LoaderCircle, MessageCircle, Plus, Send, UserRound, X } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import type { Patient } from "@/app/types";
 
 type Message = {
   role: "user" | "assistant";
@@ -18,6 +19,71 @@ type PatientContextCandidate = {
   id: string;
   label: string;
 };
+
+type ConsultationRecord = {
+  ID?: number;
+  DATE?: string | null;
+  DIAGNOSTIC?: string | null;
+  MALADIE?: string | null;
+  EXPLORATION?: string | null;
+  TRAITEMENT?: string | null;
+  CONSTAT?: string | null;
+  NOTE?: string | null;
+};
+
+type PrescriptionRecord = {
+  MEDICAMENT?: string;
+  TYPE?: string;
+  PRISE?: string;
+  DUREE?: string;
+};
+
+type BilanRecord = {
+  AVANT?: string;
+  BILAN?: string;
+  SALUT?: string;
+  ID_CONSULT?: number;
+  consultationId?: string | number;
+};
+
+type CabinetBridge = {
+  patients?: {
+    list: (options?: { limit?: number; offset?: number }) => Promise<{ items?: Patient[] } | Patient[]>;
+    get: (id: string | number) => Promise<Patient | null>;
+  };
+  consultations?: {
+    byPatient: (patientId: string | number) => Promise<ConsultationRecord[]>;
+  };
+  prescriptions?: {
+    byConsultation: (consultationId: string | number) => Promise<PrescriptionRecord[]>;
+  };
+  documents?: {
+    bilan?: {
+      list: (options?: { patientId?: string | number; limit?: number; offset?: number }) => Promise<BilanRecord[]>;
+    };
+  };
+};
+
+function normalizeSnippet(value: string | null | undefined, maxLength = 220) {
+  if (!value) return "";
+  const compact = value.replace(/\s+/g, " ").trim();
+  if (!compact) return "";
+  return compact.length > maxLength ? `${compact.slice(0, maxLength)}...` : compact;
+}
+
+function normalizeSex(value: string | null | undefined) {
+  const upper = value?.trim().toUpperCase();
+  if (!upper) return "Non precise";
+  if (upper === "M") return "Homme";
+  if (upper === "MME" || upper === "F" || upper === "MLLE") return "Femme";
+  return value?.trim() || "Non precise";
+}
+
+function getCabinetBridge(): CabinetBridge | null {
+  if (typeof window === "undefined") return null;
+  const withBridge = window as Window & { cabinet?: CabinetBridge };
+  return withBridge.cabinet ?? null;
+}
 
 const WELCOME_MESSAGE: Message = {
   role: "assistant",
@@ -45,6 +111,9 @@ export default function SupportChat({ embedded = false }: SupportChatProps) {
   const [patientCandidates, setPatientCandidates] = useState<PatientContextCandidate[]>([]);
   const [pickerPatientId, setPickerPatientId] = useState("");
   const [activePatientContext, setActivePatientContext] = useState<PatientContextCandidate | null>(null);
+  const [activePatientContextText, setActivePatientContextText] = useState<string | null>(null);
+  const [isPreparingPatientContext, setIsPreparingPatientContext] = useState(false);
+  const [patientContextError, setPatientContextError] = useState<string | null>(null);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -95,6 +164,120 @@ export default function SupportChat({ embedded = false }: SupportChatProps) {
     };
   }, [embedded, isOpen]);
 
+  const loadPatientCandidatesFromBridge = useCallback(async () => {
+    const bridge = getCabinetBridge();
+    if (!bridge?.patients?.list) return null;
+
+    const response = await bridge.patients.list({ limit: 200, offset: 0 });
+    const entries = Array.isArray(response) ? response : response?.items;
+    if (!Array.isArray(entries)) return [];
+
+    return entries
+      .filter((patient): patient is Patient => Boolean(patient?.id) && Boolean(patient?.name))
+      .map((patient) => ({
+        id: String(patient.id),
+        label: `${patient.name} - ${patient.age || "Age non precise"} ans - ${patient.gender || "Non precise"}`,
+      }));
+  }, []);
+
+  const buildPatientContextFromBridge = useCallback(async (patientId: string) => {
+    const bridge = getCabinetBridge();
+    if (!bridge?.patients?.get) return null;
+
+    const patient = await bridge.patients.get(patientId);
+    if (!patient) return null;
+
+    const consultations = bridge.consultations?.byPatient ? await bridge.consultations.byPatient(patientId) : [];
+    const recentConsultations = Array.isArray(consultations) ? consultations.slice(0, 3) : [];
+
+    const prescriptionLists = bridge.prescriptions?.byConsultation
+      ? await Promise.all(
+          recentConsultations
+            .map((consultation) => consultation.ID)
+            .filter((consultationId): consultationId is number => Number.isFinite(consultationId))
+            .map((consultationId) => bridge.prescriptions!.byConsultation(consultationId)),
+        )
+      : [];
+
+    const bilans = bridge.documents?.bilan?.list ? await bridge.documents.bilan.list({ patientId, limit: 3, offset: 0 }) : [];
+
+    const lines: string[] = [];
+    lines.push("## Contexte clinique patient (anonymise)");
+    lines.push("- Utiliser ce contexte uniquement pour le raisonnement clinique de la reponse en cours.");
+
+    const profileParts: string[] = [];
+    if (Number.isFinite(patient.age) && patient.age > 0) profileParts.push(`${patient.age} ans`);
+    if (Number.isFinite(patient.ageMonths) && Number(patient.ageMonths) > 0) profileParts.push(`${patient.ageMonths} mois`);
+    profileParts.push(normalizeSex(patient.gender));
+    lines.push(`- Profil: ${profileParts.filter(Boolean).join(" - ")}`);
+
+    const profession = normalizeSnippet(patient.profession, 80);
+    if (profession) lines.push(`- Profession: ${profession}`);
+
+    if (patient.weightKg || patient.heightCm) {
+      const weight = patient.weightKg ? `${patient.weightKg} kg` : "poids non precise";
+      const height = patient.heightCm ? `${patient.heightCm} cm` : "taille non precise";
+      lines.push(`- Anthropometrie: ${weight}, ${height}`);
+    }
+
+    const personalHistory = normalizeSnippet(patient.personalHistory, 320);
+    const familyHistory = normalizeSnippet(patient.familyHistory, 300);
+    const clinicalNote = normalizeSnippet(patient.note, 280);
+    if (personalHistory) lines.push(`- Antecedents personnels: ${personalHistory}`);
+    if (familyHistory) lines.push(`- Antecedents familiaux: ${familyHistory}`);
+    if (clinicalNote) lines.push(`- Notes cliniques: ${clinicalNote}`);
+
+    if (recentConsultations.length > 0) {
+      lines.push("### Consultations recentes");
+      recentConsultations.forEach((consultation, index) => {
+        const label = normalizeSnippet(consultation.DATE, 40) || `Consultation ${index + 1}`;
+        const parts = [
+          normalizeSnippet(consultation.DIAGNOSTIC, 220) ? `diagnostic: ${normalizeSnippet(consultation.DIAGNOSTIC, 220)}` : "",
+          normalizeSnippet(consultation.MALADIE, 160) ? `pathologie evoquee: ${normalizeSnippet(consultation.MALADIE, 160)}` : "",
+          normalizeSnippet(consultation.CONSTAT, 160) ? `constat clinique: ${normalizeSnippet(consultation.CONSTAT, 160)}` : "",
+          normalizeSnippet(consultation.EXPLORATION, 150) ? `explorations: ${normalizeSnippet(consultation.EXPLORATION, 150)}` : "",
+          normalizeSnippet(consultation.TRAITEMENT, 150) ? `traitement: ${normalizeSnippet(consultation.TRAITEMENT, 150)}` : "",
+          normalizeSnippet(consultation.NOTE, 140) ? `note: ${normalizeSnippet(consultation.NOTE, 140)}` : "",
+        ].filter(Boolean);
+        lines.push(`- ${label}`);
+        if (parts.length > 0) {
+          lines.push(`  - ${parts.join(" | ")}`);
+        }
+      });
+    }
+
+    const flatPrescriptions = prescriptionLists.flat().slice(0, 6);
+    if (flatPrescriptions.length > 0) {
+      lines.push("### Prescriptions recentes");
+      flatPrescriptions.forEach((prescription) => {
+        const med = normalizeSnippet(prescription.MEDICAMENT, 80);
+        if (!med) return;
+        const type = normalizeSnippet(prescription.TYPE, 60);
+        const prise = normalizeSnippet(prescription.PRISE, 100);
+        const duree = normalizeSnippet(prescription.DUREE, 60);
+        const detail = [type, prise, duree].filter(Boolean).join(" | ");
+        lines.push(`- ${med}${detail ? ` - ${detail}` : ""}`);
+      });
+    }
+
+    if (Array.isArray(bilans) && bilans.length > 0) {
+      lines.push("### Bilans associes");
+      bilans.slice(0, 3).forEach((bilan) => {
+        const before = normalizeSnippet(bilan.AVANT, 120);
+        const result = normalizeSnippet(bilan.BILAN, 160);
+        const followUp = normalizeSnippet(bilan.SALUT, 120);
+        const parts = [before ? `avant: ${before}` : "", result ? `bilan: ${result}` : "", followUp ? `suite: ${followUp}` : ""].filter(Boolean);
+        if (parts.length > 0) {
+          lines.push(`- ${parts.join(" | ")}`);
+        }
+      });
+    }
+
+    const context = lines.join("\n");
+    if (context.length < 120) return null;
+    return context.length > 4500 ? `${context.slice(0, 4500)}\n- ... (contexte tronque)` : context;
+  }, []);
+
   const loadPatientCandidates = useCallback(async () => {
     if (patientCandidates.length > 0 || isLoadingPatients) return;
 
@@ -102,20 +285,13 @@ export default function SupportChat({ embedded = false }: SupportChatProps) {
     setPatientsLoadError(null);
 
     try {
-      const response = await fetch("/api/patients/context");
-      const data = await response.json().catch(() => null);
+      const bridgeCandidates = await loadPatientCandidatesFromBridge();
 
-      if (!response.ok || !Array.isArray(data?.patients)) {
-        throw new Error("Unable to load patients list");
+      if (bridgeCandidates === null) {
+        throw new Error("Electron bridge unavailable");
       }
 
-      const candidates = data.patients
-        .filter((patient: unknown): patient is PatientContextCandidate => {
-          if (!patient || typeof patient !== "object") return false;
-          const entry = patient as Record<string, unknown>;
-          return typeof entry.id === "string" && typeof entry.label === "string";
-        })
-        .slice(0, 200);
+      const candidates = bridgeCandidates.slice(0, 200);
 
       setPatientCandidates(candidates);
 
@@ -124,29 +300,46 @@ export default function SupportChat({ embedded = false }: SupportChatProps) {
       }
     } catch (error) {
       console.error("Failed to load patient context candidates:", error);
-      setPatientsLoadError("Impossible de charger la liste des patients.");
+      setPatientsLoadError("Impossible de charger la liste des patients depuis la base locale.");
     } finally {
       setIsLoadingPatients(false);
     }
-  }, [isLoadingPatients, patientCandidates, pickerPatientId]);
+  }, [isLoadingPatients, loadPatientCandidatesFromBridge, patientCandidates, pickerPatientId]);
 
   const openPatientPicker = async () => {
     setIsPickerOpen(true);
     await loadPatientCandidates();
   };
 
-  const attachPatientContext = () => {
+  const attachPatientContext = async () => {
     if (!pickerPatientId) return;
     const selectedPatient = patientCandidates.find((candidate) => candidate.id === pickerPatientId);
     if (!selectedPatient) return;
 
-    setActivePatientContext(selectedPatient);
-    setIsPickerOpen(false);
-    inputRef.current?.focus();
+    setIsPreparingPatientContext(true);
+    setPatientContextError(null);
+
+    try {
+      const contextText = await buildPatientContextFromBridge(selectedPatient.id);
+      setActivePatientContext(selectedPatient);
+      setActivePatientContextText(contextText);
+      if (!contextText) {
+        setPatientContextError("Contexte detaille indisponible: utilisation des donnees minimales de selection.");
+      }
+      setIsPickerOpen(false);
+      inputRef.current?.focus();
+    } catch (error) {
+      console.error("Failed to prepare patient clinical context:", error);
+      setPatientContextError("Impossible de preparer le contexte clinique du patient.");
+    } finally {
+      setIsPreparingPatientContext(false);
+    }
   };
 
   const clearPatientContext = () => {
     setActivePatientContext(null);
+    setActivePatientContextText(null);
+    setPatientContextError(null);
   };
 
   const handleSend = async (overrideInput?: string) => {
@@ -174,7 +367,7 @@ export default function SupportChat({ embedded = false }: SupportChatProps) {
         },
         body: JSON.stringify({
           messages: sanitizedMessages,
-          contextPatientId: activePatientContext?.id,
+          patientClinicalContext: activePatientContextText,
         }),
       });
 
@@ -311,9 +504,10 @@ export default function SupportChat({ embedded = false }: SupportChatProps) {
                 onClick={() => {
                   void openPatientPicker();
                 }}
-                className="inline-flex items-center gap-1.5 rounded-full border border-slate-300 bg-slate-50 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide text-slate-700 transition hover:border-emerald-400 hover:bg-emerald-50 hover:text-emerald-700"
+                disabled={isPreparingPatientContext}
+                className="inline-flex items-center gap-1.5 rounded-full border border-slate-300 bg-slate-50 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide text-slate-700 transition hover:border-emerald-400 hover:bg-emerald-50 hover:text-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                <Plus className="h-3.5 w-3.5" />
+                {isPreparingPatientContext ? <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
                 Ajouter contexte patient
               </button>
 
@@ -367,17 +561,21 @@ export default function SupportChat({ embedded = false }: SupportChatProps) {
                       </button>
                       <button
                         type="button"
-                        onClick={attachPatientContext}
-                        disabled={!pickerPatientId}
+                        onClick={() => {
+                          void attachPatientContext();
+                        }}
+                        disabled={!pickerPatientId || isPreparingPatientContext}
                         className="rounded-lg bg-emerald-500 px-3 py-1.5 text-xs font-bold text-slate-950 transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:opacity-50"
                       >
-                        Ajouter
+                        {isPreparingPatientContext ? "Ajout..." : "Ajouter"}
                       </button>
                     </div>
                   </>
                 )}
               </div>
             ) : null}
+
+            {patientContextError ? <p className="mb-3 text-xs text-amber-700">{patientContextError}</p> : null}
 
             <div className="flex items-center gap-2">
               <input
