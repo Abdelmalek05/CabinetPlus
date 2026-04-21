@@ -47,8 +47,8 @@ type ModelAttempt =
       rawBody: string;
     };
 
-const PRIMARY_MODEL = "gemini-2.5-flash";
-const FALLBACK_MODEL = "gemini-1.5-flash";
+const PRIMARY_MODEL = "gemini-2.5-flash-lite";
+const FALLBACK_MODEL = "gemini-2.0-flash-lite";
 const GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta/models";
 
 const SYSTEM_PROMPT = `You are the CabinetPlus clinical assistant for doctors.
@@ -181,6 +181,14 @@ async function requestModel(model: string, apiKey: string, contents: GeminiConte
   const { payload, rawBody } = await parseResponseBody(response);
 
   if (!response.ok) {
+    console.error("Gemini API non-OK response", {
+      model,
+      status: response.status,
+      statusText: response.statusText,
+      payload,
+      rawBody,
+    });
+
     return {
       ok: false,
       status: response.status,
@@ -192,6 +200,13 @@ async function requestModel(model: string, apiKey: string, contents: GeminiConte
   const assistantText = getAssistantText(payload as GeminiSuccessPayload | null);
 
   if (!assistantText) {
+    console.error("Gemini API returned empty assistant content", {
+      model,
+      status: response.status,
+      payload,
+      rawBody,
+    });
+
     return {
       ok: false,
       status: 502,
@@ -288,7 +303,10 @@ export async function POST(request: Request) {
 
     return Response.json({ error: "chat_failed" }, { status: 500 });
   } catch (error) {
-    console.error("Chat route failed:", error);
+    console.error("Chat route failed:", {
+      error,
+      message: error instanceof Error ? error.message : "unknown_error",
+    });
     return Response.json({ error: "chat_failed" }, { status: 500 });
   }
 }

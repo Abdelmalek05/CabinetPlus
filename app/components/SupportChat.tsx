@@ -376,6 +376,12 @@ export default function SupportChat({ embedded = false }: SupportChatProps) {
       const data = await response.json().catch(() => null);
 
       if (!response.ok) {
+        console.error("Chat API non-OK response:", {
+          status: response.status,
+          statusText: response.statusText,
+          data,
+        });
+
         if (response.status === 429 && data?.error === "quota_exceeded") {
           setMessages((previous) => [...previous, QUOTA_EXCEEDED_MESSAGE]);
           return;
