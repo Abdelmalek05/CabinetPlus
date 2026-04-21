@@ -1,5 +1,3 @@
-import { buildPatientClinicalContext } from "@/app/lib/server/patient-context";
-
 export const runtime = "nodejs";
 
 type ChatMessage = {
@@ -9,7 +7,7 @@ type ChatMessage = {
 
 type ChatRequestBody = {
   messages?: ChatMessage[];
-  contextPatientId?: string | number;
+  patientClinicalContext?: string;
 };
 
 type GeminiPart = {
@@ -94,6 +92,13 @@ Important request context:
 - Do not ask for identifiers and do not expose personal information.
 
 ${patientClinicalContext}`;
+}
+
+function sanitizePatientClinicalContext(context: string | undefined) {
+  if (typeof context !== "string") return null;
+  const normalized = context.replace(/\s+/g, " ").trim();
+  if (!normalized) return null;
+  return normalized.length > 5000 ? `${normalized.slice(0, 5000)} ...` : normalized;
 }
 
 function isQuotaError(status: number, payload: GeminiErrorPayload | null, rawBody = "") {
@@ -261,9 +266,7 @@ export async function POST(request: Request) {
     return Response.json({ error: "invalid_request" }, { status: 400 });
   }
 
-  const patientClinicalContext = body.contextPatientId
-    ? buildPatientClinicalContext(body.contextPatientId)
-    : null;
+  const patientClinicalContext = sanitizePatientClinicalContext(body.patientClinicalContext);
 
   const systemPrompt = buildSystemPrompt(patientClinicalContext);
 

@@ -3,8 +3,8 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "cross-env NODE_OPTIONS=--max-old-space-size=4096 next dev --webpack",
-    "dev:web": "cross-env NODE_OPTIONS=--max-old-space-size=4096 next dev --webpack",
+    "dev": "next dev",
+    "dev:web": "next dev",
     "dev:electron:app": "wait-on tcp:3000 && cross-env NODE_ENV=development ELECTRON_START_URL=http://localhost:3000 electron electron/services/main.mjs",
     "dev:electron": "npm run rebuild:native && concurrently -k -n WEB,ELECTRON -c green,cyan \"npm run dev:web\" \"npm run dev:electron:app\"",
     "test:chat": "node scripts/chat-accuracy-check.mjs",
