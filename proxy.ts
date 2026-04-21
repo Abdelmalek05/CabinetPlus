@@ -9,7 +9,7 @@ function isProtectedPath(pathname: string) {
   return protectedPaths.some((path) => path !== "/" && pathname.startsWith(path));
 }
 
-export function middleware(request: NextRequest) {
+export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const sessionCookie = request.cookies.get(AUTH_COOKIE_NAME)?.value;
   const hasSession = Boolean(sessionCookie && sessionCookie.startsWith("session:"));
