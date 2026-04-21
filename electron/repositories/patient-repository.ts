@@ -1,8 +1,6 @@
-import "server-only";
-
-import type { Patient } from "../../app/types";
-import { getDatabase } from "./db";
-import type { PatientCreateInput, PatientUpdateInput } from "./types";
+import type { Patient } from "../../app/types.ts"
+import { getDatabase } from "./db.ts"
+import type { PatientCreateInput, PatientUpdateInput } from "./types.ts"
 
 type PatientRow = {
   ID: number;

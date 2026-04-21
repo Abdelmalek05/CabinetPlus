@@ -1,7 +1,5 @@
-import "server-only";
-
-import { getDatabase } from "./db";
-import type { MessageCreateInput, MessageUpdateInput } from "./types";
+import { getDatabase } from "./db.ts"
+import type { MessageCreateInput, MessageUpdateInput } from "./types.ts"
 
 type MessageRow = {
   ID: number;

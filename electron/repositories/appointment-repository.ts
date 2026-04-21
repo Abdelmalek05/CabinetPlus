@@ -1,8 +1,6 @@
-import "server-only";
-
-import type { Appointment } from "../../app/types";
-import { getDatabase } from "./db";
-import type { AppointmentCreateInput } from "./types";
+import type { Appointment } from "../../app/types.ts"
+import { getDatabase } from "./db.ts"
+import type { AppointmentCreateInput } from "./types.ts"
 
 type AppointmentRow = {
   ID: number;

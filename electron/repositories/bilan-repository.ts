@@ -1,7 +1,5 @@
-import "server-only";
-
-import { getDatabase } from "./db";
-import type { BilanCreateInput, DocumentQueryOptions } from "./types";
+import { getDatabase } from "./db.ts"
+import type { BilanCreateInput, DocumentQueryOptions } from "./types.ts"
 
 type BilanRow = {
   ID: number;

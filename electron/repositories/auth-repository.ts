@@ -1,7 +1,5 @@
-import "server-only";
-
-import { getDatabase } from "./db";
-import type { LoginAccount } from "./types";
+import { getDatabase } from "./db.ts"
+import type { LoginAccount } from "./types.ts"
 
 type LoginRow = {
   ID: number;

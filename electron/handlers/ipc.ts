@@ -1,14 +1,14 @@
 import { ipcMain } from "electron";
-import { IPC_CHANNELS } from "../../src/shared/ipc-contracts";
-import { addPrescription, createConsultation, deleteConsultation, deletePrescription, getConsultationById, listConsultationsByPatient, listPrescriptionsByConsultation } from "../repositories/consultation-repository";
-import { createAppointment, deleteAppointment, getAppointmentById, listAppointments, updateAppointment, countAppointmentsByDate } from "../repositories/appointment-repository";
-import { createPatient, deletePatient, getPatientById, listPatients, searchPatients, updatePatient, countPatients } from "../repositories/patient-repository";
-import { listRevenueRows, getRevenueTotal } from "../repositories/billing-repository";
-import { findAccountByLogin } from "../repositories/auth-repository";
-import { createArretMaladie, deleteArretMaladie, getArretMaladieById, listArretMaladies, updateArretMaladie } from "../repositories/arretmaladie-repository";
-import { createArretTravail, deleteArretTravail, getArretTravailById, listArretTravails, updateArretTravail } from "../repositories/arretravail-repository";
-import { createBilan, deleteBilan, getBilanById, listBilans, updateBilan } from "../repositories/bilan-repository";
-import { createMessage, deleteMessage, getMessageById, listMessages, updateMessage } from "../repositories/message-repository";
+import { IPC_CHANNELS } from "../../src/shared/ipc-contracts.ts";
+import { addPrescription, createConsultation, deleteConsultation, deletePrescription, getConsultationById, listConsultationsByPatient, listPrescriptionsByConsultation } from "../repositories/consultation-repository.ts";
+import { createAppointment, deleteAppointment, getAppointmentById, listAppointments, updateAppointment, countAppointmentsByDate } from "../repositories/appointment-repository.ts";
+import { createPatient, deletePatient, getPatientById, listPatients, searchPatients, updatePatient, countPatients } from "../repositories/patient-repository.ts";
+import { listRevenueRows, getRevenueTotal } from "../repositories/billing-repository.ts";
+import { findAccountByLogin } from "../repositories/auth-repository.ts";
+import { createArretMaladie, deleteArretMaladie, getArretMaladieById, listArretMaladies, updateArretMaladie } from "../repositories/arretmaladie-repository.ts";
+import { createArretTravail, deleteArretTravail, getArretTravailById, listArretTravails, updateArretTravail } from "../repositories/arretravail-repository.ts";
+import { createBilan, deleteBilan, getBilanById, listBilans, updateBilan } from "../repositories/bilan-repository.ts";
+import { createMessage, deleteMessage, getMessageById, listMessages, updateMessage } from "../repositories/message-repository.ts";
 
 function publicAccount(account: ReturnType<typeof findAccountByLogin>) {
   if (!account) return null;

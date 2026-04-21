@@ -1,7 +1,5 @@
-import "server-only";
-
-import { getDatabase } from "./db";
-import type { ArretTravailCreateInput, DocumentQueryOptions } from "./types";
+import { getDatabase } from "./db.ts"
+import type { ArretTravailCreateInput, DocumentQueryOptions } from "./types.ts"
 
 type ArretTravailRow = {
   ID: number;
