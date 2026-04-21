@@ -1,7 +1,7 @@
 "use client";
 
 import { Edit, Filter, Plus, Search, Trash2, UserRound } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { MOCK_PATIENTS } from "@/app/constants";
 import type { Patient } from "@/app/types";
 import {
@@ -15,6 +15,52 @@ import {
   TextArea,
   TextInput,
 } from "@/app/components/ui/primitives";
+
+/* ------------------------------------------------------------------ */
+/* Electron IPC bridge type                                            */
+/* ------------------------------------------------------------------ */
+
+type PatientCreateInput = {
+  cardNumber?: string;
+  firstName: string;
+  lastName: string;
+  age: number;
+  ageMonths?: number;
+  gender: Patient["gender"];
+  profession?: string;
+  familyStatus?: string;
+  children?: number;
+  address?: string;
+  phone?: string;
+  weightKg?: number;
+  heightCm?: number;
+  personalHistory?: string;
+  familyHistory?: string;
+  note?: string;
+};
+
+type PatientUpdateInput = Partial<PatientCreateInput>;
+
+type CabinetPatientsBridge = {
+  list: (options?: { query?: string; familyStatus?: string; limit?: number; offset?: number }) => Promise<{ items: Patient[]; total: number }>;
+  get: (id: string | number) => Promise<Patient | null>;
+  create: (input: PatientCreateInput) => Promise<Patient>;
+  update: (id: string | number, input: PatientUpdateInput) => Promise<Patient | null>;
+  remove: (id: string | number) => Promise<boolean>;
+  search: (query: string, limit?: number) => Promise<Patient[]>;
+  count: () => Promise<number>;
+};
+
+function getCabinetPatients(): CabinetPatientsBridge | null {
+  if (typeof window !== "undefined" && "cabinet" in window) {
+    return (window as unknown as { cabinet: { patients: CabinetPatientsBridge } }).cabinet.patients;
+  }
+  return null;
+}
+
+/* ------------------------------------------------------------------ */
+/* Form types & defaults                                               */
+/* ------------------------------------------------------------------ */
 
 type PatientForm = {
   cardNumber: string;
@@ -61,8 +107,36 @@ const normalizeFamilyStatus = (status: string) => {
   return status;
 };
 
+function formToCreateInput(form: PatientForm): PatientCreateInput {
+  return {
+    cardNumber: form.cardNumber || undefined,
+    firstName: form.firstName,
+    lastName: form.lastName,
+    age: form.ageYears,
+    ageMonths: form.ageMonths || undefined,
+    gender: form.gender,
+    profession: form.profession || undefined,
+    familyStatus: form.familyStatus,
+    children: form.children,
+    address: form.address || undefined,
+    phone: form.phone || undefined,
+    weightKg: form.weightKg || undefined,
+    heightCm: form.heightCm || undefined,
+    personalHistory: form.personalHistory || undefined,
+    familyHistory: form.familyHistory || undefined,
+    note: form.note || undefined,
+  };
+}
+
+/* ------------------------------------------------------------------ */
+/* Page component                                                      */
+/* ------------------------------------------------------------------ */
+
 export default function PatientsPage() {
-  const [patients, setPatients] = useState<Patient[]>(MOCK_PATIENTS);
+  const [patients, setPatients] = useState<Patient[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [useBackend, setUseBackend] = useState(false);
   const [query, setQuery] = useState("");
   const [familyFilter, setFamilyFilter] = useState("Tous");
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -72,24 +146,46 @@ export default function PatientsPage() {
   const [patientToDelete, setPatientToDelete] = useState<Patient | null>(null);
   const [form, setForm] = useState<PatientForm>(DEFAULT_FORM);
 
-  useEffect(() => {
-    setPatients((prev) => prev.map((patient) => ({ ...patient, familyStatus: normalizeFamilyStatus(patient.familyStatus) })));
+  /* ---- Load patients from backend or fallback to mock ---- */
+
+  const loadPatients = useCallback(async () => {
+    const bridge = getCabinetPatients();
+    if (!bridge) {
+      // Outside Electron — use mock data
+      setPatients(
+        MOCK_PATIENTS.map((p) => ({ ...p, familyStatus: normalizeFamilyStatus(p.familyStatus) })),
+      );
+      setUseBackend(false);
+      setLoading(false);
+      return;
+    }
+
+    setUseBackend(true);
+    try {
+      const result = await bridge.list({ limit: 200 });
+      setPatients(
+        result.items.map((p) => ({ ...p, familyStatus: normalizeFamilyStatus(p.familyStatus) })),
+      );
+    } catch (error) {
+      console.error("Failed to load patients:", error);
+      setPatients(
+        MOCK_PATIENTS.map((p) => ({ ...p, familyStatus: normalizeFamilyStatus(p.familyStatus) })),
+      );
+      setUseBackend(false);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
+  useEffect(() => {
+    loadPatients();
+  }, [loadPatients]);
+
+  /* ---- Filtering (client-side on loaded data) ---- */
+
   const handleSearchChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    // Ignore browser autofill updates when the search field is not actively focused.
     if (document.activeElement !== event.currentTarget) return;
     setQuery(event.target.value);
-  };
-
-  const isStepOneValid = () => {
-    return Boolean(form.lastName.trim() && form.firstName.trim() && form.ageYears > 0);
-  };
-
-  const closePatientModal = () => {
-    setIsModalOpen(false);
-    setActiveStep(1);
-    setFormError(null);
   };
 
   const filteredPatients = useMemo(() => {
@@ -102,6 +198,20 @@ export default function PatientsPage() {
       return matchQuery && matchStatus;
     });
   }, [patients, query, familyFilter]);
+
+  /* ---- Form validation ---- */
+
+  const isStepOneValid = () => {
+    return Boolean(form.lastName.trim() && form.firstName.trim() && form.ageYears > 0);
+  };
+
+  /* ---- Modal helpers ---- */
+
+  const closePatientModal = () => {
+    setIsModalOpen(false);
+    setActiveStep(1);
+    setFormError(null);
+  };
 
   const openCreateModal = () => {
     setEditingPatientId(null);
@@ -141,12 +251,13 @@ export default function PatientsPage() {
       setFormError("Veuillez renseigner Nom, Prenom et Age avant de continuer.");
       return;
     }
-
     setFormError(null);
     setActiveStep(2);
   };
 
-  const savePatient = () => {
+  /* ---- CRUD: Save (create or update) ---- */
+
+  const savePatient = async () => {
     if (!isStepOneValid()) {
       setFormError("Veuillez renseigner Nom, Prenom et Age avant de valider.");
       setActiveStep(1);
@@ -154,69 +265,122 @@ export default function PatientsPage() {
     }
 
     setFormError(null);
+    setSaving(true);
 
-    const fullName = `${form.lastName} ${form.firstName}`.trim();
+    const bridge = getCabinetPatients();
+    const input = formToCreateInput(form);
 
-    if (editingPatientId) {
-      setPatients((prev) =>
-        prev.map((patient) =>
-          patient.id === editingPatientId
-            ? {
-                ...patient,
-                name: fullName,
-                age: form.ageYears,
-                address: form.address,
-                phone: form.phone,
-                gender: form.gender,
-                profession: form.profession,
-                children: form.children,
-                familyStatus: form.familyStatus,
-                cardNumber: form.cardNumber,
-                firstName: form.firstName,
-                lastName: form.lastName,
-                ageMonths: form.ageMonths,
-                weightKg: form.weightKg,
-                heightCm: form.heightCm,
-                personalHistory: form.personalHistory,
-                familyHistory: form.familyHistory,
-                note: form.note,
-              }
-            : patient,
-        ),
-      );
+    if (useBackend && bridge) {
+      try {
+        if (editingPatientId) {
+          // UPDATE via backend
+          const updated = await bridge.update(editingPatientId, input);
+          if (!updated) {
+            setFormError("Mise à jour échouée. Le patient n'existe peut-être plus.");
+            setSaving(false);
+            return;
+          }
+        } else {
+          // CREATE via backend
+          await bridge.create(input);
+        }
+
+        // Reload from DB so the list reflects the change
+        await loadPatients();
+      } catch (error) {
+        console.error("Failed to save patient:", error);
+        setFormError("Erreur lors de l'enregistrement. Veuillez réessayer.");
+        setSaving(false);
+        return;
+      }
     } else {
-      const newPatient: Patient = {
-        id: String(Date.now()),
-        name: fullName,
-        age: form.ageYears,
-        address: form.address,
-        phone: form.phone,
-        gender: form.gender,
-        profession: form.profession,
-        children: form.children,
-        familyStatus: form.familyStatus,
-        lastConsultation: new Date().toISOString().slice(0, 10),
-        cardNumber: form.cardNumber,
-        firstName: form.firstName,
-        lastName: form.lastName,
-        ageMonths: form.ageMonths,
-        weightKg: form.weightKg,
-        heightCm: form.heightCm,
-        personalHistory: form.personalHistory,
-        familyHistory: form.familyHistory,
-        note: form.note,
-      };
-      setPatients((prev) => [newPatient, ...prev]);
+      // Local-only (no Electron) — original local state logic
+      const fullName = `${form.lastName} ${form.firstName}`.trim();
+
+      if (editingPatientId) {
+        setPatients((prev) =>
+          prev.map((patient) =>
+            patient.id === editingPatientId
+              ? {
+                  ...patient,
+                  name: fullName,
+                  age: form.ageYears,
+                  address: form.address,
+                  phone: form.phone,
+                  gender: form.gender,
+                  profession: form.profession,
+                  children: form.children,
+                  familyStatus: form.familyStatus,
+                  cardNumber: form.cardNumber,
+                  firstName: form.firstName,
+                  lastName: form.lastName,
+                  ageMonths: form.ageMonths,
+                  weightKg: form.weightKg,
+                  heightCm: form.heightCm,
+                  personalHistory: form.personalHistory,
+                  familyHistory: form.familyHistory,
+                  note: form.note,
+                }
+              : patient,
+          ),
+        );
+      } else {
+        const newPatient: Patient = {
+          id: String(Date.now()),
+          name: fullName,
+          age: form.ageYears,
+          address: form.address,
+          phone: form.phone,
+          gender: form.gender,
+          profession: form.profession,
+          children: form.children,
+          familyStatus: form.familyStatus,
+          lastConsultation: new Date().toISOString().slice(0, 10),
+          cardNumber: form.cardNumber,
+          firstName: form.firstName,
+          lastName: form.lastName,
+          ageMonths: form.ageMonths,
+          weightKg: form.weightKg,
+          heightCm: form.heightCm,
+          personalHistory: form.personalHistory,
+          familyHistory: form.familyHistory,
+          note: form.note,
+        };
+        setPatients((prev) => [newPatient, ...prev]);
+      }
     }
 
+    setSaving(false);
     closePatientModal();
   };
 
-  const deletePatient = () => {
+  /* ---- CRUD: Delete ---- */
+
+  const deletePatient = async () => {
     if (!patientToDelete) return;
-    setPatients((prev) => prev.filter((patient) => patient.id !== patientToDelete.id));
+
+    const bridge = getCabinetPatients();
+
+    if (useBackend && bridge) {
+      try {
+        const deleted = await bridge.remove(patientToDelete.id);
+        if (!deleted) {
+          console.warn("Patient was not found in database (already deleted?).");
+        }
+        // Reload from DB
+        await loadPatients();
+      } catch (error) {
+        console.error("Failed to delete patient:", error);
+      }
+    } else {
+      // Local-only
+      setPatients((prev) => prev.filter((patient) => patient.id !== patientToDelete.id));
+    }
+
     setPatientToDelete(null);
   };
+
+  /* ---- Render ---- */
 
   return (
     <div className="mx-auto max-w-[1480px] space-y-6">
@@ -230,6 +394,14 @@ export default function PatientsPage() {
           </AppButton>
         }
       />
+
+      {/* Loading indicator */}
+      {loading && (
+        <div className="flex items-center gap-2 rounded-lg bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-700">
+          <div className="h-4 w-4 animate-spin rounded-full border-2 border-emerald-500 border-t-transparent" />
+          Chargement des patients...
+        </div>
+      )}
 
       <AppCard className="space-y-4">
         <div className="grid gap-3 md:grid-cols-3">
@@ -257,7 +429,7 @@ export default function PatientsPage() {
           </div>
         </div>
 
-        {filteredPatients.length === 0 ? (
+        {!loading && filteredPatients.length === 0 ? (
           <EmptyState title="Aucun patient trouve" message="Essayez un autre filtre ou ajoutez un nouveau dossier." />
         ) : (
           <div className="overflow-x-auto">
@@ -311,6 +483,7 @@ export default function PatientsPage() {
         )}
       </AppCard>
 
+      {/* Create / Edit modal */}
       <Modal
         open={isModalOpen}
         title={editingPatientId ? "Modifier le patient" : "Ajouter un patient"}
@@ -326,8 +499,17 @@ export default function PatientsPage() {
                 Retour
               </AppButton>
             ) : null}
-            <AppButton onClick={activeStep === 1 ? goToConsultationStep : savePatient}>
-              {activeStep === 1 ? "Suivant" : editingPatientId ? "Mettre a jour" : "Ajouter"}
+            <AppButton
+              onClick={activeStep === 1 ? goToConsultationStep : savePatient}
+              disabled={saving}
+            >
+              {saving
+                ? "Enregistrement..."
+                : activeStep === 1
+                  ? "Suivant"
+                  : editingPatientId
+                    ? "Mettre a jour"
+                    : "Ajouter"}
             </AppButton>
           </>
         }
@@ -444,6 +626,7 @@ export default function PatientsPage() {
         </div>
       </Modal>
 
+      {/* Delete confirmation modal */}
       <Modal
         open={Boolean(patientToDelete)}
         title="Supprimer ce dossier ?"
@@ -460,7 +643,7 @@ export default function PatientsPage() {
         }
       >
         <p className="text-sm text-slate-600">
-          Le dossier de <strong>{patientToDelete?.name}</strong> sera supprime de la liste locale.
+          Le dossier de <strong>{patientToDelete?.name}</strong> sera definitivement supprime de la base de données.
         </p>
       </Modal>
     </div>
